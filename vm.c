@@ -413,3 +413,9 @@ void vm_seg_info_free_list(vm_seg_info *p)
         p = q;
     }
 }
+
+void vm_set_default_value(vm_env *env, int arg)
+{
+    env->temps[0].type = INT;
+    env->temps[0].value.vint = arg;
+}
