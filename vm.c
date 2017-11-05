@@ -63,15 +63,15 @@ static inline void vm_push(vm_env *env, size_t n);
 #define VM_JGT() VM_J_TYPE_INST(>)
 #define VM_JNZ() VM_J_TYPE_INST(!=)
 
-#define VM_CALL_HANDLER()                                                \
-    do {                                                                 \
-        if (OPCODE_IMPL(OPCODE))                                         \
+#define VM_CALL_HANDLER()                                                                                                                                                                                                                                                                                 \
+    do {                                                                                                                                                                                                                                                                                                  \
+        if (OPCODE_IMPL(OPCODE))                                                                                                                                                                                                                                                                          \
             /* clang-format off */                                       \
             OPCODE_IMPL(OPCODE) (vm_get_op_value(env, &OPCODE.op1),      \
                                  vm_get_op_value(env, &OPCODE.op2),      \
                                  vm_get_temp_value(env, OPCODE.result)); \
-            /* clang-format on */                                        \
-        DISPATCH;                                                        \
+        /* clang-format on */                                                                                                                                                                                                                                                                             \
+        DISPATCH;                                                                                                                                                                                                                                                                                         \
     } while (0)
 
 /* Constant pool max size */
@@ -412,4 +412,10 @@ void vm_seg_info_free_list(vm_seg_info *p)
         free(p);
         p = q;
     }
+}
+
+void vm_set_default_value(vm_env *env, int arg)
+{
+    env->temps[0].type = INT;
+    env->temps[0].value.vint = arg;
 }

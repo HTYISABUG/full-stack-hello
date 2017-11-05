@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <stdlib.h>
 
 #include "as.h"
 #include "opcode.h"
@@ -16,11 +17,13 @@ typedef enum {
 } req_t;
 
 #define help_text                                                           \
-    "Usage: as_exec [-w] [-x] [-o <out_file>] <in_file>\n"                  \
+    "Usage: as_exec [-w] [-x] [-o <out_file>] [-i <default_value>] "        \
+    "<in_file>\n"                                                           \
     "       -w Assemble <in_file> and write to an ELF file, see -o below\n" \
-    "       -o if -w is specifed, <out_file> is used to store the object "  \
+    "       -o If -w is specifed, <out_file> is used to store the object "  \
     "code\n"                                                                \
     "       -x Load <in_file> and execute it\n"                             \
+    "       -i Store <default_value> in register id 0\n"                    \
     "\n"                                                                    \
     "       <in_file> the file name to be used by commands above"
 
@@ -32,6 +35,9 @@ int main(int argc, char **argv)
     int ignore_option = 0;
     int out_fd = -1;
     int in_fd = -1;
+
+    int default_value;
+    int default_value_opt = 0;
 
     for (int i = 1; i < argc; i++) {
         if (ignore_option)
@@ -54,6 +60,11 @@ int main(int argc, char **argv)
             if (req == ASSEMBLE_AND_WRITE_ELF)
                 FATAL(-1, "-w and -x used together, see -h\n");
             req = LOAD_ELF_AND_EVAL;
+        } else if (!strcmp(argv[i], "-i")) {
+            if (i++ == argc - 1)
+                FATAL(-1, "Missing default value, see -h\n");
+            default_value = atoi(argv[i]);
+            default_value_opt = 1;
         } else if (!strcmp(argv[i], "-")) {
             if (in_file)
                 FATAL(-1, "more than one input file, see -h\n");
@@ -104,6 +115,8 @@ int main(int argc, char **argv)
     switch (req) {
     case ASSEMBLE_AND_EVAL: {
         vm_env *env = vm_new();
+        if (default_value_opt)
+            vm_set_default_value(env, default_value);
         assemble_from_fd(env, in_fd);
         hook_opcodes(env);
         vm_run(env);
@@ -114,6 +127,8 @@ int main(int argc, char **argv)
         int len;
 
         vm_env *env = vm_new();
+        if (default_value_opt)
+            vm_set_default_value(env, default_value);
         assemble_from_fd(env, in_fd);
         len = write_to_elf(env, out_fd);
         vm_free(env);
@@ -124,6 +139,8 @@ int main(int argc, char **argv)
     }
     case LOAD_ELF_AND_EVAL: {
         vm_env *env = vm_new();
+        if (default_value_opt)
+            vm_set_default_value(env, default_value);
         load_from_elf(env, in_fd);
         hook_opcodes(env);
         vm_run(env);
