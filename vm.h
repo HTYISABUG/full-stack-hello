@@ -26,10 +26,7 @@ typedef struct {
     int result;
 } vm_inst;
 
-typedef struct {
-    int opcode;
-    vm_handler handler;
-} vm_opcode_impl;
+typedef vm_handler vm_opcode_impl;
 
 #define VM_T(_op) _op->type
 #define VM_INT(_op) _op->value.vint
