@@ -3,6 +3,8 @@
 
 #include "vm.h"
 
+void make_table_from_fd(vm_env *env, int fd);
+
 void assemble_from_fd(vm_env *env, int fd);
 
 int write_to_elf(vm_env *env, int fd);

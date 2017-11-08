@@ -117,6 +117,7 @@ int main(int argc, char **argv)
         vm_env *env = vm_new();
         if (default_value_opt)
             vm_set_default_value(env, default_value);
+        make_table_from_fd(env, in_fd);
         assemble_from_fd(env, in_fd);
         hook_opcodes(env);
         vm_run(env);
@@ -129,6 +130,7 @@ int main(int argc, char **argv)
         vm_env *env = vm_new();
         if (default_value_opt)
             vm_set_default_value(env, default_value);
+        make_table_from_fd(env, in_fd);
         assemble_from_fd(env, in_fd);
         len = write_to_elf(env, out_fd);
         vm_free(env);

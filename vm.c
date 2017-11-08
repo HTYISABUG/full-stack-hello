@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 #include "vm.h"
 #include "vm_codegen.h"
@@ -63,6 +64,8 @@ static inline void vm_push(vm_env *env, size_t n);
 #define VM_JGT() VM_J_TYPE_INST(>)
 #define VM_JNZ() VM_J_TYPE_INST(!=)
 
+#define VM_NOP() DISPATCH
+
 /* clang-format off */
 #define VM_CALL_HANDLER()                                               \
     do {                                                                \
@@ -86,6 +89,12 @@ static inline void vm_push(vm_env *env, size_t n);
 /* OPCODE impl max size */
 #define OPCODE_IMPL_MAX_SIZE 256
 
+/* Label table max size */
+#define LABEL_TABLE_MAX_SIZE INSTS_MAX_SIZE
+
+/* Label max length */
+#define LABEL_MAX_LENGTH 32
+
 typedef struct {
     size_t pc;    // program counter.
     size_t sp;    // stack runs from the end of 'temps' region.
@@ -93,11 +102,18 @@ typedef struct {
     size_t to;    // the immediate PC after last branch/return.
 } vm_regs;
 
+typedef struct _vm_label {
+    char label[LABEL_MAX_LENGTH];
+    size_t addr;
+    struct _vm_label *next;
+} vm_label;
+
 struct __vm_env {
-    vm_inst insts[INSTS_MAX_SIZE];         /* Program instructions */
-    vm_value cpool[CPOOL_MAX_SIZE];        /* Constant pool */
-    vm_value temps[TEMPS_MAX_SIZE];        /* Temporary storage */
-    vm_handler impl[OPCODE_IMPL_MAX_SIZE]; /* OPCODE impl */
+    vm_inst insts[INSTS_MAX_SIZE];          /* Program instructions */
+    vm_value cpool[CPOOL_MAX_SIZE];         /* Constant pool */
+    vm_value temps[TEMPS_MAX_SIZE];         /* Temporary storage */
+    vm_handler impl[OPCODE_IMPL_MAX_SIZE];  /* OPCODE impl */
+    vm_label *labels[LABEL_TABLE_MAX_SIZE]; /* Label table */
     vm_regs r;
     int insts_count;
     int cpool_count;
@@ -120,6 +136,14 @@ vm_env *vm_new()
 
 void vm_free(vm_env *env)
 {
+    for (int i = 0; i < LABEL_TABLE_MAX_SIZE; ++i) {
+        vm_label *head = env->labels[i];
+        while (head != NULL) {
+            vm_label *next = head->next;
+            free(head);
+            head = next;
+        }
+    }
     free(env);
 }
 
@@ -144,6 +168,56 @@ size_t vm_add_inst(vm_env *env, vm_inst inst)
     env->insts[env->insts_count] = inst;
 
     return env->insts_count++;
+}
+
+static inline size_t BKDR_hash(const char *str)
+{
+    const size_t seed = 13131;
+    size_t hash = 0;
+
+    while (*str) {
+        hash = hash * seed + (*str++);
+    }
+
+    return hash & 0x7fffffff;
+}
+
+void vm_add_label(vm_env *env, char *label, size_t addr)
+{
+    if (strlen(label) >= LABEL_MAX_LENGTH) {
+        fprintf(stderr,
+                "Label \"%s\" too long, shouldn't exceed %u characters\n",
+                label, LABEL_MAX_LENGTH);
+        exit(EXIT_FAILURE);
+    };
+
+    vm_label *new_label = (vm_label *) malloc(sizeof(vm_label));
+    size_t idx = BKDR_hash(label) % LABEL_TABLE_MAX_SIZE;
+    vm_label *p = env->labels[idx];
+
+    strcpy(new_label->label, label);
+    new_label->addr = addr;
+    new_label->next = NULL;
+
+    if (p == NULL) {
+        env->labels[idx] = new_label;
+    } else {
+        while (p->next != NULL)
+            p = p->next;
+        p->next = new_label;
+    }
+}
+
+int vm_label2addr(vm_env *env, const char *label)
+{
+    vm_label *p = env->labels[BKDR_hash(label) % LABEL_TABLE_MAX_SIZE];
+
+    while (p != NULL) {
+        if (strcmp(p->label, label) == 0)
+            return p->addr;
+    }
+
+    return -1;
 }
 
 static inline void vm_push(vm_env *env, size_t n)
@@ -215,6 +289,7 @@ void vm_run(vm_env *env)
     OP(JMP) : GOTO(OPCODE.op1.value.id);
     OP(CALL) : VM_CALL(OPCODE.op1.value.id);
     OP(RET) : VM_RET();
+    OP(NOP) : VM_NOP();
 
     OP(HALT) : goto terminate;
 

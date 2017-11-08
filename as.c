@@ -166,6 +166,7 @@ static const struct instruction *find_inst(const char *name)
 static inline vm_operand make_operand(vm_env *env, char *line, const char *data)
 {
     vm_operand op;
+    int addr = -1;
 
     if (data == NULL || data[0] == ';') {
         printf("Error: missing operand in the following line\n");
@@ -190,6 +191,14 @@ static inline vm_operand make_operand(vm_env *env, char *line, const char *data)
         op.value.id = vm_add_const(env, STR, quoted_strdup(data));
         break;
     default:
+        addr = vm_label2addr(env, data);
+
+        if (addr != -1) {
+            op.type = TEMP;
+            op.value.id = addr;
+            break;
+        }
+
         printf(
             "Error: please specify operand type for '%s' in the following "
             "line\n"
@@ -234,7 +243,41 @@ static inline int make_result(vm_env *env, char *line, const char *data)
 static void assemble_line(vm_env *env, char *line)
 {
     char *line_backup = strdup(line);
-    char *mnemonic = quoted_strsep(&line, " ");
+
+    /* if there is a label, remove it */
+    char *label = quoted_strsep(&line, ":");
+    char *mnemonic;
+
+    if (strlen(label) + 1 == strlen(line_backup)) {
+        vm_inst new_inst;
+        const struct instruction *inst = find_inst("nop");
+
+        memset(&new_inst, 0, sizeof(vm_inst));
+        new_inst.opcode = inst->opcode;
+        vm_add_inst(env, new_inst);
+
+        free(line_backup);
+
+        return;
+    } else if (strcmp(line, "") != 0) {
+        mnemonic = quoted_strsep(&line, " ");
+        if (strcmp(line, "") == 0) {
+            vm_inst new_inst;
+            const struct instruction *inst = find_inst("nop");
+
+            memset(&new_inst, 0, sizeof(vm_inst));
+            new_inst.opcode = inst->opcode;
+            vm_add_inst(env, new_inst);
+
+            free(line_backup);
+
+            return;
+        }
+    } else {
+        line = label;
+        mnemonic = quoted_strsep(&line, " ");
+    }
+
     char *op1 = quoted_strsep(&line, " ");
     char *op2 = quoted_strsep(&line, " ");
     char *result = quoted_strsep(&line, " ");
@@ -274,6 +317,41 @@ void assemble_from_fd(vm_env *env, int fd)
         assemble_line(env, line);
     }
     free(line);
+
+    fclose(fp);
+}
+
+static void get_label_from_line(vm_env *env, char *line, size_t addr)
+{
+    char *line_backup = strdup(line);
+    char *label = quoted_strsep(&line, ":");
+
+    /* label with no any postfix character || label with postfix character */
+    if (strlen(label) + 1 == strlen(line_backup) || strcmp(line, "") != 0) {
+        label = quoted_strsep(&label, " ");
+        vm_add_label(env, label, addr);
+    }
+
+    free(line_backup);
+}
+
+void make_table_from_fd(vm_env *env, int fd)
+{
+    char *line = NULL;
+    size_t size = 0;
+    FILE *fp = fdopen(fd, "r");
+    size_t addr = 0;
+
+    while (getline(&line, &size, fp) != -1) {
+        if (line[0] == ';' || line[0] == '\n')
+            continue;
+        line[strcspn(line, "\r\n")] = 0;
+        get_label_from_line(env, line, addr++);
+    }
+
+    free(line);
+
+    rewind(fp);
 }
 
 #define ALIGN_TYPE long
